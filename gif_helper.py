@@ -15,19 +15,25 @@ class render_utils(object):
         self.flame = FLAME(self.config).to(self.device)
         self.flametex = FLAMETex(self.config).to(self.device)
 
-        self._setup_renderer()
+        self._setup_renderer(config.mesh_file)
         self.flame_faces = self.render.faces
 
-    def _setup_renderer(self):
-        mesh_file = './data/head_template_mesh.obj'
+    def _setup_renderer(self, mesh_file):
         self.render = Renderer(self.image_size, obj_filename=mesh_file).to(self.device)
 
-    def render_tex_and_normal(self, shapecode, expcode, posecode, texcode, lightcode, cam):
+    def render_tex_and_normal(self, shapecode, expcode, posecode, texcode, lightcode, cam, constant_albedo=None):
         verts, _, _ = self.flame(shape_params=shapecode, expression_params=expcode, pose_params=posecode)
         trans_verts = util.batch_orth_proj(verts, cam)
         trans_verts[:, :, 1:] = -trans_verts[:, :, 1:]
 
-        albedos = self.flametex(texcode)
+        if constant_albedo is None:
+            albedos = self.flametex(texcode)
+        else:
+            albedos = \
+                torch.tensor([constant_albedo, constant_albedo,
+                              constant_albedo], dtype=torch.float32)[None, ..., None, None].cuda()
+            albedos = albedos.repeat(texcode.shape[0], 1, 256, 256)
+
         rendering_results = self.render(verts, trans_verts, albedos, lights=lightcode)
         textured_images, normals = rendering_results['images'], rendering_results['normals']
         normal_images = self.render.render_normal(trans_verts, normals)
